@@ -72,7 +72,15 @@ defmodule Burrito.Steps.Patch.RecompileNIFs do
       |> Path.wildcard()
       |> List.first()
 
-    _ = System.cmd("make", ["clean"], cd: path, stderr_to_stdout: true, into: IO.stream())
+
+    crc_for_windows? = dep == "crc" and String.contains?(cross_target, "windows")
+    make_path = if crc_for_windows? do
+        Path.join(path, "c_src")
+      else
+        path
+      end
+
+    _ = System.cmd("make", ["clean"], cd: make_path, stderr_to_stdout: true, into: IO.stream())
 
     # Compose env variables for cross-compilation, if we're building for linux, force dynamic linking
     erts_env =
@@ -82,10 +90,16 @@ defmodule Burrito.Steps.Patch.RecompileNIFs do
         erts_make_env(erts_path)
       end
 
+    erts_env = if crc_for_windows? do
+        erts_env ++ [{"PLATFORM", "burrito_windows"}]
+       else
+         erts_env
+       end
+
     # This currently is only designed for elixir_make NIFs
     build_result =
       System.cmd("make", ["all", "--always-make"] ++ extra_make_args,
-        cd: path,
+        cd: make_path,
         stderr_to_stdout: true,
         env:
           [
